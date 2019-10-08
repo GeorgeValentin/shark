@@ -47,43 +47,43 @@ fn main() {
 
     loop {
         select! {
-                            recv(r1) -> line1  =>{
-                                if let Ok(line) = line1{
+            recv(r1) -> line1  =>{
+                if let Ok(line) = line1{
 
-                                    let len = line.len();
+                    let len = line.len();
 
-                                    let cmd_string = line;
-                                    channel.write(cmd_string.as_bytes()).unwrap();
+                    let cmd_string = line;
+                    channel.write(cmd_string.as_bytes()).unwrap();
 
-                                    if channel.exit_status().unwrap() > 0{
+                    if channel.exit_status().unwrap() > 0{
 
-                                        let mut stderr = vec![0; 4096];
-                                        channel.stderr().read(&mut stderr).unwrap();
-                                        println!("stderr: {}", String::from_utf8(stderr).unwrap());
+                        let mut stderr = vec![0; 4096];
+                        channel.stderr().read(&mut stderr).unwrap();
+                        println!("stderr: {}", String::from_utf8(stderr).unwrap());
 
-                                    }
+                    }
 
-                                    let mut stdout = vec![0; 4096];
-                                    channel.read(&mut stdout).unwrap();
-                                    println!(">>{}", String::from_utf8(stdout).unwrap());
+                    let mut stdout = vec![0; 4096];
+                    channel.read(&mut stdout).unwrap();
+                    println!(">>{}", String::from_utf8(stdout).unwrap());
 
-                                    if (len>1){
-                                        let mut stdout = vec![0; 4096];
-                                        channel.read(&mut stdout).unwrap();
-                                        println!(">>{}", String::from_utf8(stdout).unwrap());
-                                    }
+                    if (len>1){
+                        let mut stdout = vec![0; 4096];
+                        channel.read(&mut stdout).unwrap();
+                        println!(">>{}", String::from_utf8(stdout).unwrap());
+                    }
 
-                                }
-                            }
-                            recv(r2) -> line2 => {
-                                if let Ok(line) = line2{
-                                    println!("{}", line);
-                                }
-                            }
-                            default(Duration::from_millis(1000)) => {
+                }
+            }
+            recv(r2) -> line2 => {
+                if let Ok(line) = line2{
+                    println!("{}", line);
+                }
+            }
+            default(Duration::from_millis(1000)) => {
 
-                            }
+            }
 
-                        }
+        }
     }
 }
