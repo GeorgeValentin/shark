@@ -1,15 +1,14 @@
-#[macro_use]
 extern crate crossbeam;
+extern crate rustyline;
 
-use crossbeam::crossbeam_channel;
-use ssh2::Channel;
 use ssh2::Session;
-use std::io;
 use std::io::prelude::*;
 use std::net::TcpStream;
-use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time;
+
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 
 fn main() {
     let tcp = TcpStream::connect("192.168.33.20:22").unwrap();
@@ -24,66 +23,53 @@ fn main() {
 
     channel.shell().unwrap();
 
-    let (s1, r1) = crossbeam_channel::unbounded::<String>();
-    let (s2, r2) = crossbeam_channel::unbounded::<String>();
-
-    thread::spawn(move || loop {
-        let mut input = String::new();
-        match io::stdin().read_line(&mut input) {
-            Ok(n) => {
-                s1.send(input).unwrap();
-            }
-            Err(error) => println!("error: {}", error),
-        }
-    });
+    let mut stdout = vec![0; 4096];
+    channel.read(&mut stdout).unwrap();
+    let s = String::from_utf8(stdout).unwrap();
+    println!("{}", s);
 
     let mut stdout = vec![0; 4096];
     channel.read(&mut stdout).unwrap();
-    println!("{}", String::from_utf8(stdout).unwrap());
+    let s = String::from_utf8(stdout).unwrap();
+    println!("{}", s);
 
-    let mut stdout = vec![0; 4096];
-    channel.read(&mut stdout).unwrap();
-    println!("{}", String::from_utf8(stdout).unwrap());
+    let mut reader = Editor::<()>::new();
 
     loop {
-        select! {
-            recv(r1) -> line1  =>{
-                if let Ok(line) = line1{
+        let readline = reader.readline(">>");
 
-                    let len = line.len();
+        match readline {
+            Ok(line) => {
+                let len = line.len();
+                let cmd_string = line + "\n";
+                channel.write(cmd_string.as_bytes()).unwrap();
+                channel.flush().unwrap();
 
-                    let cmd_string = line;
-                    channel.write(cmd_string.as_bytes()).unwrap();
+                thread::sleep(time::Duration::from_secs(1));
 
-                    if channel.exit_status().unwrap() > 0{
+                let mut stdout = vec![0; 4096];
+                channel.read(&mut stdout).unwrap();
+                let s = String::from_utf8(stdout).unwrap();
+                println!("{}", s);
 
-                        let mut stderr = vec![0; 4096];
-                        channel.stderr().read(&mut stderr).unwrap();
-                        println!("stderr: {}", String::from_utf8(stderr).unwrap());
-
-                    }
-
-                    let mut stdout = vec![0; 4096];
-                    channel.read(&mut stdout).unwrap();
-                    println!(">>{}", String::from_utf8(stdout).unwrap());
-
-                    if (len>1){
-                        let mut stdout = vec![0; 4096];
-                        channel.read(&mut stdout).unwrap();
-                        println!(">>{}", String::from_utf8(stdout).unwrap());
-                    }
-
-                }
+                //                if len > 0 {
+                //                    let mut stdout = vec![0; 4096];
+                //                    channel.read(&mut stdout).unwrap();
+                //                    let s = String::from_utf8(stdout).unwrap();
+                //                    println!("{}", s);
+                //                }
             }
-            recv(r2) -> line2 => {
-                if let Ok(line) = line2{
-                    println!("{}", line);
-                }
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break;
             }
-            default(Duration::from_millis(1000)) => {
-
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break;
             }
-
+            Err(err) => {
+                println!("Error: {:?}", err);
+            }
         }
     }
 }
