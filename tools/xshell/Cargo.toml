@@ -7,16 +7,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#futures = "0.1.26"
-
-#tokio = "0.1.22"
-
-#env_logger = "0.6.2"
-
-#thrussh = "0.21.5"
-#thrussh-keys = "0.11.9"
-
-ssh2 = "0.4.0"
-crossbeam = "0.7.2"
-
-
+ssh2 = "0.5.0"
+crossbeam = "0.7.3"
