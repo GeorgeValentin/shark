@@ -25,17 +25,16 @@ fn main() {
 
     thread::spawn(move || loop {
         let stdin = std::io::stdin();
-        let mut s = String::new();
-        stdin.read_line(&mut s).unwrap();
-        trx.send(s).unwrap();
+        let mut line = String::new();
+        stdin.read_line(&mut line).unwrap();
+        trx.send(line).unwrap();
     });
 
     loop {
-        let mut stdout = vec![0; 4096];
-
-        match channel.read(&mut stdout) {
+        let mut buf = vec![0; 4096];
+        match channel.read(&mut buf) {
             Ok(_) => {
-                let s = String::from_utf8(stdout).unwrap();
+                let s = String::from_utf8(buf).unwrap();
                 println!("{}", s);
             }
             Err(e) => {
