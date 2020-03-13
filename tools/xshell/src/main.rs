@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate crossbeam;
 extern crate tempfile;
 
@@ -6,71 +7,64 @@ use std::io::prelude::*;
 use std::net::TcpStream as StdTcpStream;
 use std::process::Command;
 use std::thread;
+use std::{fs, io};
 
 use tempfile::Builder;
 
 use crossbeam::channel::{unbounded, TryRecvError};
 use ssh2::Session;
 
-fn main_ssh2() {
-    let tcp = StdTcpStream::connect("192.168.33.30:22").unwrap();
-    let mut sess = Session::new().unwrap();
-    sess.set_tcp_stream(tcp);
-    sess.handshake().unwrap();
-    sess.userauth_password("root", "vagrant").unwrap();
+use clap::{App, Arg, SubCommand};
 
-    let mut channel = sess.channel_session().unwrap();
 
-    channel.request_pty("xterm", None, None).unwrap();
-
-    channel.shell().unwrap();
-
-    sess.set_blocking(false);
-
-    let (trx, rev) = unbounded();
-
-    thread::spawn(move || loop {
-        let stdin = std::io::stdin();
-        let mut line = String::new();
-        stdin.read_line(&mut line).unwrap();
-        trx.send(line).unwrap();
-    });
-
-    loop {
-        let mut buf = vec![0; 4096];
-        match channel.read(&mut buf) {
-            Ok(_) => {
-                let s = String::from_utf8(buf).unwrap();
-                println!("{}", s);
-            }
-            Err(e) => {
-                if e.kind() != std::io::ErrorKind::WouldBlock {
-                    println!("{}", e);
-                }
-            }
-        }
-
-        if !rev.is_empty() {
-            match rev.try_recv() {
-                Ok(line) => {
-                    let cmd_string = line + "\n";
-                    channel.write(cmd_string.as_bytes()).unwrap();
-                    channel.flush().unwrap();
-                }
-
-                Err(TryRecvError::Empty) => {
-                    println!("{}", "empty");
-                }
-
-                Err(TryRecvError::Disconnected) => {
-                    println!("{}", "disconnected");
-                }
-            }
-        }
-    }
-}
+mod xshell_config;
 
 fn main() {
+    let version = env!("CARGO_PKG_VERSION");
+    let authors = env!("CARGO_PKG_AUTHORS");
+    let about = env!("CARGO_PKG_DESCRIPTION");
+
+    let mut command_list = Vec::new();
+
+    let cmd_list = SubCommand::with_name("list").about("list all the host in group");
+
+    command_list.push(cmd_list);
+
+    let mut app = App::new("xshell")
+        .version(version)
+        .author(authors)
+        .about(about)
+        .arg(
+            Arg::with_name("config dir")
+                .short("d")
+                .long("config_dir")
+                .value_name("DIR")
+                .help("Sets a custom config dir")
+                .takes_value(true),
+        )
+        .subcommands(command_list);
+
+    let app_matches = app.clone().get_matches();
+
+    let config_dir = app_matches
+        .value_of("config_dir")
+        .unwrap_or("etc/server_groups");
+    println!("Value for config dir: {}", config_dir);
+
+    match app_matches.subcommand() {
+        ("list", Some(sub_m)) => {
+            let config = xshell_config::parse_config(config_dir);
+            println!("{:?}", config);
+            config.pretty_print();
+        }
+        _ => {
+            println!("unknown subcommand");
+            app.print_help();
+        }
+    }
+
+    return;
+
     let username = "root";
     let password = "vagrant";
     let ip = "192.168.33.30";
