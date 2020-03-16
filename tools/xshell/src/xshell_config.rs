@@ -31,12 +31,10 @@ pub struct Config {
 impl Config {
     pub fn pretty_print(self: Self) {
         for group in self.group_list {
-            let mut table = Table::new();
-            let mut table2 = Table::new();
-//
-//            table.add_row(table2.into());
+            let mut table_group = Table::new();
+            let mut table_host = Table::new();
 
-            table.add_row(Row::new(vec![
+            table_group.set_titles(Row::new(vec![
                 Cell::new("NO").with_style(Attr::ForegroundColor(color::GREEN)),
                 Cell::new("hostname"),
                 Cell::new("ip"),
@@ -46,8 +44,8 @@ impl Config {
             ]));
 
             for (i, host) in group.host_list.iter().enumerate() {
-                table.add_row(Row::new(vec![
-                    Cell::new(format!("{}", i + 1).as_str()).with_style(Attr::ForegroundColor(color::RED)),
+                table_group.add_row(Row::new(vec![
+                    Cell::new(format!("{}", i + 1).as_str()).with_style(Attr::ForegroundColor(color::GREEN)),
                     Cell::new(host.hostname.as_str()),
                     Cell::new(host.ip.as_str()),
                     Cell::new(host.port.as_str()),
@@ -56,13 +54,12 @@ impl Config {
                 ]));
             }
 
-            table2.add_row(Row::new(vec![
-                Cell::new(format!("Grop Name: {}", group.name).as_str()).with_style(Attr::ForegroundColor(color::GREEN)),
+            table_host.add_row(Row::new(vec![
+                Cell::new(format!("Grop Name: {}", group.name).as_str()).with_style(Attr::ForegroundColor(color::MAGENTA)),
             ]));
-            table2.add_row(Row::new(vec![
-                Cell::new(table.to_string().as_str())
-            ]));
-            table2.printstd();
+
+            table_host.printstd();
+            table_group.printstd();
         }
     }
 }
