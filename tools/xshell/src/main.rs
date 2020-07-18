@@ -1,6 +1,7 @@
 extern crate clap;
 extern crate crossbeam;
 extern crate tempfile;
+extern crate mio;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -13,9 +14,12 @@ use ssh2::Session;
 
 use clap::{App, Arg, SubCommand};
 
+use mio::net::{TcpListener as MioTcpListener, TcpStream as MioTcpStream};
+use mio::{Events, Poll, Token, Ready, PollOpt};
+
 mod xshell_config;
 
-fn main() {
+fn main2() {
     let version = env!("CARGO_PKG_VERSION");
     let authors = env!("CARGO_PKG_AUTHORS");
     let about = env!("CARGO_PKG_DESCRIPTION");
@@ -97,8 +101,20 @@ fn main() {
     tmp_dir.close().unwrap();
 }
 
-fn main_inactive_ssh() {
-    let tcp = StdTcpStream::connect("192.168.33.30:22").unwrap();
+const SSH_TOKEN: Token = Token(1);
+
+fn main() {
+
+    let addr = "192.168.33.30:22".parse().unwrap();
+
+    let mut tcp = MioTcpStream::connect(&addr).unwrap();
+
+
+    let poll = Poll::new().unwrap();
+    let mut events = Events::with_capacity(1024);
+    poll.register(&tcp, SSH_TOKEN, Ready::readable(), PollOpt::edge()).unwrap();
+
+
     let mut sess = Session::new().unwrap();
     sess.set_tcp_stream(tcp);
     sess.handshake().unwrap();
@@ -112,7 +128,6 @@ fn main_inactive_ssh() {
 
     sess.set_blocking(false);
 
-
     let mut ssh_stdin = channel.stream(0);
     let mut ssh_stdout = channel.stream(0);
     let mut ssh_stderr = channel.stderr();
@@ -125,65 +140,68 @@ fn main_inactive_ssh() {
             loop {
                 let mut line = String::new();
                 stdin.read_line(&mut line).unwrap();
-                channel.write(line.as_bytes()).unwrap();
-                channel.flush().unwrap();
+                ssh_stdin.write(line.as_bytes()).unwrap();
+                ssh_stdin.flush().unwrap();
             }
         });
 
-        let stdout_handle = s.spawn(|_| {
-            let stdout = io::stdout();
-            let mut stdout = stdout.lock();
-
+        let poll_handle = s.spawn(|_| {
             loop {
-                let mut buf = vec![0; 4096];
-                match ssh_stdout.read(&mut buf) {
-                    Ok(_) => {
-                        let s = String::from_utf8(buf).unwrap();
-                        stdout.write(s.as_bytes()).unwrap();
-                    }
-                    Err(e) => {
-                        if e.kind() != std::io::ErrorKind::WouldBlock {
-                            println!("{}", e);
+                poll.poll(&mut events, None).unwrap();
+                for event in events.iter() {
+                    match event.token() {
+                        SSH_TOKEN => {
+
+                            if event.readiness().is_readable() {
+                                let stdout = io::stdout();
+                                let mut stdout = stdout.lock();
+                                let mut buf = vec![0; 4096];
+                                match ssh_stdout.read(&mut buf) {
+                                    Ok(_) => {
+                                        let s = String::from_utf8(buf).unwrap();
+                                        stdout.write(s.as_bytes()).unwrap();
+                                    }
+                                    Err(e) => {
+                                        if e.kind() != std::io::ErrorKind::WouldBlock {
+                                            println!("{}", e);
+                                        }
+                                    }
+                                }
+
+                                let stderr = io::stderr();
+                                let mut stderr = stderr.lock();
+                                let mut buf = vec![0; 4096];
+                                match ssh_stderr.read(&mut buf) {
+                                    Ok(_) => {
+                                        let s = String::from_utf8(buf).unwrap();
+                                        stderr.write(s.as_bytes()).unwrap();
+                                    }
+                                    Err(e) => {
+                                        if e.kind() != std::io::ErrorKind::WouldBlock {
+                                            println!("{}", e);
+                                        }
+                                    }
+                                }
+                            }
+
                         }
+                        _ => unreachable!(),
                     }
                 }
             }
         });
 
-        let stderr_handle = s.spawn(|_| {
-            let stderr = io::stderr();
-            let mut stderr = stderr.lock();
-
-            loop {
-                let mut buf = vec![0; 4096];
-                match ssh_stderr.read(&mut buf) {
-                    Ok(_) => {
-                        let s = String::from_utf8(buf).unwrap();
-                        stderr.write(s.as_bytes()).unwrap();
-                    }
-                    Err(e) => {
-                        if e.kind() != std::io::ErrorKind::WouldBlock {
-                            println!("{}", e);
-                        }
-                    }
-                }
-            }
-        });
-
-        // The unwrap() means the main thread will panic if the inner threads panicked.
         let stdin_result: Result<u64, io::Error> = stdin_handle.join().unwrap();
-        let stdout_result: Result<u64, io::Error> = stdout_handle.join().unwrap();
-        let stderr_result: Result<u64, io::Error> = stderr_handle.join().unwrap();
+        let poll_result: Result<u64, io::Error> = poll_handle.join().unwrap();
 
-        stdin_result.and(stdout_result).and(stderr_result)
+        stdin_result.and(poll_result)
+
     }).unwrap(); // Should never panic because all scoped threads have been joined.
 
-    // Return Err if any of the threads errored.
     all_result.unwrap();
 
     // Wait for SSH channel to close.
     channel.wait_close().unwrap();
     let exit_status = channel.exit_status().unwrap();
-    // Ok(exit_status)
     exit(exit_status)
 }
