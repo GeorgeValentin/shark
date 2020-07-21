@@ -15,7 +15,7 @@ use ssh2::Session;
 use clap::{App, Arg, SubCommand};
 
 use mio::net::{TcpListener as MioTcpListener, TcpStream as MioTcpStream};
-use mio::{Events, Poll, Token, Ready, PollOpt};
+use mio::{Events, Poll, Token, Interest};
 
 mod xshell_config;
 
@@ -107,12 +107,12 @@ fn main() {
 
     let addr = "192.168.33.30:22".parse().unwrap();
 
-    let mut tcp = MioTcpStream::connect(&addr).unwrap();
+    let mut tcp = MioTcpStream::connect(addr).unwrap();
 
 
-    let poll = Poll::new().unwrap();
+    let mut poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(1024);
-    poll.register(&tcp, SSH_TOKEN, Ready::readable(), PollOpt::edge()).unwrap();
+    poll.registry().register(&mut tcp, SSH_TOKEN, Interest::READABLE).unwrap();
 
 
     let mut sess = Session::new().unwrap();
@@ -152,7 +152,7 @@ fn main() {
                     match event.token() {
                         SSH_TOKEN => {
 
-                            if event.readiness().is_readable() {
+                            if event.is_readable() {
                                 let stdout = io::stdout();
                                 let mut stdout = stdout.lock();
                                 let mut buf = vec![0; 4096];

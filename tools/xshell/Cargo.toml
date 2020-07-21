@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mio = "0.6.22"
+mio = { version = "0.7.0", features = ["os-poll", "tcp"] }
 ssh2 = "0.8.0"
 crossbeam = "0.7.3"
 rexpect = "0.3"
